@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Human Verification Checker</title>
+</head>
+<body>
+  <h1>Human Verification Checker</h1>
+
+  <label for="fileInput">Upload session JSON:</label>
+  <input type="file" id="fileInput" title="Upload session JSON file"><br><br>
+
+  <label for="tokenInput">Enter verification token:</label>
+  <input type="text" id="tokenInput" placeholder="e.g., HV-5F7A3C9D"><br><br>
+
+  <button onclick="verify()">Verify</button>
+
+  <p id="result"></p>
+
+  <script>
+    async function sha256(text) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(text);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function verify() {
+      const file = document.getElementById("fileInput").files[0];
+      const tokenInput = document.getElementById("tokenInput").value.trim().toUpperCase();
+
+      if (!file || !tokenInput) {
+        alert("Upload file and enter token");
+        return;
+      }
+
+      const text = await file.text();
+      let json;
+      try { json = JSON.parse(text); } 
+      catch { 
+        alert("Invalid JSON file"); 
+        return; 
+      }
+
+      // Check token
+      if (json.token !== tokenInput) {
+        document.getElementById("result").innerText = "❌ Token does not match!";
+        return;
+      }
+
+      // Check hash
+      const sessionString = JSON.stringify(json.session);
+      const calculatedHash = await sha256(sessionString);
+
+      if (calculatedHash === json.hash) {
+        document.getElementById("result").innerText = "✅ Verification successful! Hash matches.";
+      } else {
+        document.getElementById("result").innerText = "❌ Verification failed! Hash does not match.";
+      }
+    }
+  </script>
+</body>
+</html>
