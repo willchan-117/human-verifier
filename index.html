@@ -1,65 +1,274 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Human Verification Checker</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProofWrite Verification Checker</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
+        h1 { color: #202124; }
+        label { display: block; margin-top: 15px; font-weight: bold; }
+        input[type="text"] { width: 100%; max-width: 400px; padding: 8px; margin-top: 5px; box-sizing: border-box; }
+        button { padding: 10px 20px; background-color: #4285f4; color: white; border: none; cursor: pointer; margin-top: 20px; }
+        button:hover { background-color: #357ae8; }
+        #result { margin-top: 20px; padding: 15px; border-radius: 4px; border: 1px solid #ccc; white-space: pre-wrap; }
+        .success { background-color: #e6ffe6; border-color: #1e8e3e; color: #1e8e3e; }
+        .failure { background-color: #ffe6e6; border-color: #d93025; color: #d93025; }
+        
+        /* NEW: Container for file input area (CSS from previous step) */
+        #file-container {
+            display: flex; 
+            gap: 20px; 
+            max-width: 820px;
+        }
+
+        /* Existing Drag and Drop Styling (CSS from previous step) */
+        #drop-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 400px;
+            padding: 40px 20px;
+            margin-top: 10px;
+            text-align: center;
+            color: #777;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #drop-area.highlight {
+            background-color: #f0f0f0;
+            border-color: #4285f4;
+        }
+        
+        /* NEW: Status Box Styling (CSS from previous step) */
+        #status-box {
+            flex-grow: 1;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            max-width: 400px;
+            min-height: 100px;
+            background-color: #fafafa;
+            font-size: 0.9em;
+        }
+        .file-status {
+            margin: 5px 0;
+            font-weight: bold;
+        }
+        .file-status.docx { color: #1e8e3e; }
+        .file-status.json { color: #d93025; }
+        #file-list { margin-top: 10px; color: #555; display: none; } /* file-list is now hidden */
+    </style>
 </head>
 <body>
-  <h1>Human Verification Checker</h1>
+    <h1>ProofWrite Verification Checker 🔐</h1>
 
-  <label for="fileInput">Upload session JSON:</label>
-  <input type="file" id="fileInput" title="Upload session JSON file"><br><br>
+    <label>1. Upload Files (.docx & .json):</label>
+    
+    <div id="file-container">
+        <div id="drop-area" 
+             ondragover="event.preventDefault(); this.classList.add('highlight');" 
+             ondragleave="this.classList.remove('highlight');" 
+             ondrop="handleDrop(event)">
+            Drop the **.docx** file and the **.json** report here, or click to select.
+            <input type="file" id="file-input" multiple accept=".docx,.json" style="display: none;" onchange="handleFileChange(this.files)">
+        </div>
 
-  <label for="tokenInput">Enter verification token:</label>
-  <input type="text" id="tokenInput" placeholder="e.g., HV-5F7A3C9D"><br><br>
+        <div id="status-box">
+            <div style="font-weight: bold; margin-bottom: 10px;">Current Selection Status:</div>
+            <div id="docx-status" class="file-status">❌ .docx Document: Missing</div>
+            <div id="json-status" class="file-status">❌ .json Report: Missing</div>
+        </div>
+    </div>
+    
+    <div id="file-list" style="display: none;">No files selected.</div>
+    
+    <label for="tokenInput">2. Enter Verification Token:</label>
+    <input type="text" id="tokenInput" placeholder="e.g., HV-5F7A3C9D">
 
-  <button onclick="verify()">Verify</button>
+    <button onclick="verify()">Verify Report Integrity</button>
 
-  <p id="result"></p>
+    <div id="result">Awaiting verification...</div>
 
-  <script>
-    async function sha256(text) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(text);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-    }
+    <script id="verification-script">
+        // 🔑 YOUR DEPLOYED FIREBASE FUNCTION URL
+        const FIREBASE_FUNCTION_URL = 'https://us-central1-humanverifier-af27d.cloudfunctions.net/verify';
 
-    async function verify() {
-      const file = document.getElementById("fileInput").files[0];
-      const tokenInput = document.getElementById("tokenInput").value.trim().toUpperCase();
+        let selectedFiles = [];
 
-      if (!file || !tokenInput) {
-        alert("Upload file and enter token");
-        return;
-      }
+        // --- Helper Functions for File Reading and Hashing (REMAIN UNCHANGED) ---
 
-      const text = await file.text();
-      let json;
-      try { json = JSON.parse(text); } 
-      catch { 
-        alert("Invalid JSON file"); 
-        return; 
-      }
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = e => reject(e);
+                reader.readAsText(file);
+            });
+        }
 
-      // Check token
-      if (json.token !== tokenInput) {
-        document.getElementById("result").innerText = "❌ Token does not match!";
-        return;
-      }
+        function readFileAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = e => reject(e);
+                reader.readAsArrayBuffer(file);
+            });
+        }
 
-      // Check hash
-      const sessionString = JSON.stringify(json.session);
-      const calculatedHash = await sha256(sessionString);
+        async function sha256(data) {
+            let buffer;
+            if (typeof data === 'string') {
+                buffer = new TextEncoder().encode(data);
+            } else if (data instanceof ArrayBuffer) {
+                buffer = data;
+            } else {
+                throw new Error("sha256 input must be string or ArrayBuffer.");
+            }
+            
+            const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+        }
+        
+        // --- UI Handlers for Drag/Drop/Select (UPDATED) ---
 
-      if (calculatedHash === json.hash) {
-        document.getElementById("result").innerText = "✅ Verification successful! Hash matches.";
-      } else {
-        document.getElementById("result").innerText = "❌ Verification failed! Hash does not match.";
-      }
-    }
-  </script>
+        function handleFileChange(files) {
+            // Use a Map to support dropping one file, then the other, ensuring only unique files by name are kept.
+            const newFilesMap = new Map();
+            
+            // Add existing files to the map
+            selectedFiles.forEach(f => newFilesMap.set(f.name, f));
+            
+            // Add new files to the map (this will overwrite any previous file with the same name)
+            Array.from(files).forEach(f => newFilesMap.set(f.name, f));
+            
+            selectedFiles = Array.from(newFilesMap.values());
+            updateFileList();
+        }
+
+        function handleDrop(event) {
+            event.preventDefault(); 
+            document.getElementById('drop-area').classList.remove('highlight');
+            const files = event.dataTransfer.files; 
+            handleFileChange(files);
+        }
+
+        // Event listener to allow clicking the drop area
+        document.getElementById('drop-area').addEventListener('click', () => {
+            document.getElementById('file-input').click(); 
+        });
+
+        // 🔄 UPDATED function to manage the new visual status box
+        function updateFileList() {
+            const docxFile = selectedFiles.find(f => f.name.toLowerCase().endsWith('.docx'));
+            const jsonFile = selectedFiles.find(f => f.name.toLowerCase().endsWith('.json'));
+
+            const docxStatusEl = document.getElementById('docx-status');
+            const jsonStatusEl = document.getElementById('json-status');
+            
+            // --- Update DOCX Status ---
+            if (docxFile) {
+                docxStatusEl.className = 'file-status docx';
+                docxStatusEl.innerText = `✅ .docx Document: ${docxFile.name}`;
+            } else {
+                docxStatusEl.className = 'file-status';
+                docxStatusEl.innerText = '❌ .docx Document: Missing';
+            }
+
+            // --- Update JSON Status ---
+            if (jsonFile) {
+                jsonStatusEl.className = 'file-status json';
+                jsonStatusEl.innerText = `✅ .json Report: ${jsonFile.name}`;
+            } else {
+                jsonStatusEl.className = 'file-status';
+                jsonStatusEl.innerText = '❌ .json Report: Missing';
+            }
+        }
+
+        // --- Main Verification Function (REMAIN UNCHANGED) ---
+        async function verify() {
+            const tokenInput = document.getElementById("tokenInput").value.trim().toUpperCase();
+            const resultEl = document.getElementById("result");
+            resultEl.className = '';
+            resultEl.innerText = 'Processing...';
+
+            if (selectedFiles.length < 2 || !tokenInput) {
+                resultEl.className = 'failure';
+                resultEl.innerText = "❌ Verification failed. Please upload both files and enter the token.";
+                return;
+            }
+
+            // Find the two required files from the selected array
+            const docxFile = selectedFiles.find(f => f.name.toLowerCase().endsWith('.docx'));
+            const jsonFile = selectedFiles.find(f => f.name.toLowerCase().endsWith('.json'));
+
+            if (!docxFile || !jsonFile) {
+                resultEl.className = 'failure';
+                resultEl.innerText = "❌ Could not find both a .docx file and a .json report among the uploaded files.";
+                return;
+            }
+
+            try {
+                // 1. Calculate DOCX Hash (The only processing done client-side)
+                const docxBuffer = await readFileAsArrayBuffer(docxFile);
+                const calculatedDocHash = await sha256(docxBuffer);
+
+                // 2. Read JSON Report Content
+                const jsonText = await readFileAsText(jsonFile);
+                const jsonReport = JSON.parse(jsonText);
+
+                // 3. Prepare Payload and Send to Firebase API
+                const payload = {
+                    jsonReport: jsonReport,
+                    calculatedDocHash: calculatedDocHash, 
+                    token: tokenInput
+                };
+
+                const response = await fetch(FIREBASE_FUNCTION_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const apiResult = await response.json();
+                
+                // 4. Display Results
+                displayVerificationResults(apiResult);
+
+            } catch (e) {
+                resultEl.className = 'failure';
+                resultEl.innerText = `❌ Fatal Error during processing or connection: ${e.message}\nCheck console (F12) for network details.`;
+                console.error("Verification Error:", e);
+            }
+        }
+        
+        // --- Final Display Function (REMAIN UNCHANGED) ---
+        function displayVerificationResults(result) {
+            const resultEl = document.getElementById('result');
+            const flags = result.telemetry?.flags || {};
+            const timestamp = result.telemetry?.exportTimestamp || 'N/A';
+            
+            const flagDisplay = `
+--- Suspicious Activity Flags (Evidence) ---
+Export Timestamp: ${timestamp}
+Total Sessions: ${flags.totalSessions || 0}
+🚨 Large Paste Flags: ${flags.largePaste || 0} (Large external text insertion)
+⚡ Speed Spike Flags: ${flags.speedSpike || 0} (Physically impossible typing speed)
+🤖 Sustained Speed Flags: ${flags.sustainedSpeed || 0} (WPM over 120 sustained)
+--------------------------------------------
+            `;
+
+            const finalStatus = result.success ? "✅ VERIFICATION SUCCESSFUL (Authenticity & Integrity Confirmed)" : "❌ VERIFICATION FAILED (File Tampering or Invalid Report)";
+            resultEl.className = result.success ? 'success' : 'failure';
+            
+            resultEl.innerText = `${finalStatus}
+${flagDisplay}
+
+--- Security Checks (Server Audit) ---
+${result.details.join('\n')}`;
+        }
+    </script>
 </body>
 </html>
