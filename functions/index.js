@@ -1,3 +1,7 @@
+//firebase for getting word add in to a server so the uni can use to direct into their lms
+
+
+
 const functions = require("firebase-functions");
 const crypto = require("crypto");
 

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" 
+      content="default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; 
+               script-src 'self' https: 'unsafe-inline' 'unsafe-eval' https://appsforoffice.microsoft.com https://cdn.jsdelivr.net; 
+               connect-src 'self' https: wss:; 
+               style-src 'self' 'unsafe-inline' https:;
+               font-src 'self' https: data:;">
+  <title>ForensiCode</title>
+
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f8; color: #222; padding: 18px; }
+    h1 { font-size: 22px; margin-bottom: 14px; font-weight: 600; color: #111; }
+    .section { background: white; border-radius: 10px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+    .stats-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .stat-item { font-size: 15px; color: #333; font-weight: 500; }
+    button { background: #0078d7; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; padding: 10px; }
+    button:hover:not(:disabled) { background:#005fa3; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    #exportBtn { width: 100%; font-size: 15px; margin-top: 10px; }
+    #verificationContainer { display: none; margin-top: 15px; padding: 12px; border: 1px solid #cce4f7; border-radius: 8px; background: #f0f8ff; flex-direction: column; gap: 8px; }
+    #verificationToken { font-size: 13px; font-family: monospace; word-break: break-all; padding: 6px; border-radius: 4px; border: 1px dashed #0078d7; }
+    #lastReport { font-size: 11px; white-space: pre-wrap; background: #f2f2f2; padding: 10px; border-radius: 8px; margin-top: 15px; color: #555; max-height: 100px; overflow-y: auto; display: none; }
+    .accordion-header { display: flex; justify-content: space-between; cursor: pointer; }
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+  <h1>ForensiCode</h1>
+  <div class="section">
+    <h3>Current Session</h3>
+    <div class="stats-row">
+      <div class="stat-item" id="sessionTime">Ready to start...</div>
+    </div>
+    <div class="stat-item" id="charCount" style="font-size: 24px; margin-top: 10px;">0 chars</div>
+    <div style="font-size:12px; color:#666; margin-top:5px">Graphs generate automatically when session ends.</div>
+  </div>
+
+  <div class="section">
+    <h3>Export & Verification</h3>
+    <button id="exportBtn">Export Sessions & Generate Token</button>
+
+    <div id="verificationContainer">
+      <div>
+        <strong>Verification Token</strong>
+        <div id="verificationToken"></div>
+        <button id="copyTokenBtn">Copy Token</button>
+      </div>
+
+      <div>
+        <strong>Document Integrity Hash</strong>
+        <div id="documentHashDisplay" style="font-size:12px;"></div>
+      </div>
+    </div>
+
+    <div id="lastReport" style="display:none; border:1px solid #ccc; margin-top:10px;"></div>
+  </div>
+
+  <div class="section">
+    <div class="accordion-header" id="historyHeader">
+      <h3>Past Sessions (Newest First)</h3>
+      <span id="historyChevron">▼ (Click to Show)</span>
+    </div>
+
+    <div id="pastSessionsContainer">
+      <div id="flaggedSummary"><i>No sessions yet.</i></div>
+    </div>
+  </div>
+
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script src="graphs.js"></script>
+  <script src="taskpane.js"></script>
+
+</body>
+</html>
