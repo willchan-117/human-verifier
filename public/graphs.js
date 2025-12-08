@@ -5,134 +5,124 @@ let activeCharts = {
     speed: null
 };
 
-// This name matches the call in taskpane.js "safeRenderSessionGraphs"
 window.renderSessionGraphs = function (session) {
-
-    // 1. Find or create the container.
     let container = document.getElementById("sessionDetailGraphArea");
-    
+
     if (!container) {
         const summaryDiv = document.getElementById("pastSessionsContainer");
         container = document.createElement("div");
         container.id = "sessionDetailGraphArea";
-
-        // KEY FIX: Force reliable layout height
         container.style.marginTop = "20px";
-        container.style.padding = "15px";
-        container.style.background = "#fff";
-        container.style.borderRadius = "8px";
-        container.style.border = "1px solid #e0e0e0";
-        container.style.display = "flex";
-        container.style.flexDirection = "column";
-        container.style.gap = "25px";
-
         summaryDiv.parentNode.insertBefore(container, summaryDiv.nextSibling);
     }
 
-    container.innerHTML = "<h4>Session Analysis</h4>";
+    container.innerHTML = `
+        <h4 style="margin-bottom:12px;">Session Analysis</h4>
+        <div id="wordsChartContainer" style="height:260px; margin-bottom:25px;">
+            <canvas id="wordsChart"></canvas>
+        </div>
+        <div id="wpmChartContainer" style="height:260px;">
+            <canvas id="wpmChart"></canvas>
+        </div>
+    `;
 
-    // 2. Validate data
     if (!session.events || session.events.length < 2) {
         container.innerHTML += "<i>Not enough data points to generate a graph.</i>";
         return;
     }
 
-    // 3. Process data
+    // Process Data
     const labels = [];
     const wordsData = [];
     const wpmData = [];
 
-    const startTime = session.events[0].t;
+    const events = session.events;
+    const startTime = events[0].t;
 
-    session.events.forEach((event) => {
-        const timeDiffMs = event.t - startTime;
-        const minutes = timeDiffMs / 60000;
+    for (let i = 1; i < events.length; i++) {
+        const prev = events[i - 1];
+        const curr = events[i];
 
-        if (timeDiffMs < 1000) return;
+        const deltaChars = curr.c - prev.c;
+        const deltaMs = curr.t - prev.t;
 
-        const totalSeconds = Math.floor(timeDiffMs / 1000);
+        if (deltaMs <= 200) continue; // skip tiny intervals
+
+        const minutesSinceStart = (curr.t - startTime) / 60000;
+        const totalSeconds = Math.floor((curr.t - startTime) / 1000);
+
         const mm = Math.floor(totalSeconds / 60);
         const ss = totalSeconds % 60;
+
         labels.push(`${mm}:${ss.toString().padStart(2, "0")}`);
 
-        const estimatedWords = event.c / 5;
-        wordsData.push(estimatedWords.toFixed(1));
+        // Cumulative words (correct)
+        const words = curr.c / 5;
+        wordsData.push(words.toFixed(1));
 
-        const wpm = minutes > 0 ? (estimatedWords / minutes) : 0;
+        // FIXED WPM (interval-based)
+        const minutes = deltaMs / 60000;
+        const intervalWords = deltaChars / 5;
+
+        const wpm = minutes > 0 ? intervalWords / minutes : 0;
         wpmData.push(wpm.toFixed(0));
-    });
+    }
 
-    // 4. Create canvases with forced height
-    const canvas1 = document.createElement("canvas");
-    canvas1.style.height = "220px";        // ⭐ FIX
-    canvas1.style.minHeight = "220px";     // ⭐ FIX
-    container.appendChild(canvas1);
-
-    const canvas2 = document.createElement("canvas");
-    canvas2.style.height = "220px";        // ⭐ FIX
-    canvas2.style.minHeight = "220px";     // ⭐ FIX
-    container.appendChild(canvas2);
-
-    // 5. Destroy old charts
+    // Destroy old charts
     if (activeCharts.progress) activeCharts.progress.destroy();
     if (activeCharts.speed) activeCharts.speed.destroy();
 
-    // Common Chart.js options
-    const baseOptions = {
-        responsive: true,
-        maintainAspectRatio: false,   // ⭐ MOST IMPORTANT FIX
-        animation: false,
-        scales: {
-            y: { beginAtZero: true }
-        },
-        plugins: {
-            legend: { display: false }
-        }
-    };
+    const wordsCtx = document.getElementById("wordsChart").getContext("2d");
+    const wpmCtx = document.getElementById("wpmChart").getContext("2d");
 
-    // 6. Words graph
-    activeCharts.progress = new Chart(canvas1.getContext("2d"), {
+    // Create charts
+    activeCharts.progress = new Chart(wordsCtx, {
         type: "line",
         data: {
             labels,
             datasets: [{
-                label: "Words Typed",
+                label: "Words Typed (Cumulative)",
                 data: wordsData,
                 borderColor: "#0078d7",
-                backgroundColor: "rgba(0, 120, 215, 0.1)",
-                tension: 0.25,
-                fill: true
+                backgroundColor: "rgba(0, 120, 215, 0.15)",
+                fill: true,
+                tension: 0.35,
             }]
         },
         options: {
-            ...baseOptions,
-            plugins: {
-                title: { display: true, text: "Words Over Time" }
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true }
             }
         }
     });
 
-    // 7. WPM graph
-    activeCharts.speed = new Chart(canvas2.getContext("2d"), {
+    activeCharts.speed = new Chart(wpmCtx, {
         type: "line",
         data: {
             labels,
             datasets: [{
-                label: "WPM",
+                label: "Typing Speed (WPM)",
                 data: wpmData,
                 borderColor: "#d93025",
-                backgroundColor: "rgba(217, 48, 37, 0.1)",
-                tension: 0.25,
-                fill: true
+                backgroundColor: "rgba(217, 48, 37, 0.15)",
+                fill: true,
+                tension: 0.35,
             }]
         },
         options: {
-            ...baseOptions,
-            plugins: {
-                title: { display: true, text: "WPM Over Time" }
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true }
             }
         }
     });
 
-    container.scrollIntoView({ behavior: "smooth" });
+    // Force charts to resize when the taskpane changes width
+    new ResizeObserver(() => {
+        if (activeCharts.progress) activeCharts.progress.resize();
+        if (activeCharts.speed) activeCharts.speed.resize();
+    }).observe(container);
 };
