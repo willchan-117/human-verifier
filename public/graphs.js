@@ -5,7 +5,20 @@ let activeCharts = {
     speed: null
 };
 
+let lastRenderedSession = null;  // so resize can re-render
+
+// Re-render charts on resize (Word taskpane collapses → canvas becomes tiny)
+const observer = new ResizeObserver(() => {
+    if (lastRenderedSession) {
+        renderSessionGraphs(lastRenderedSession);
+    }
+});
+
+// This name matches the call in taskpane.js
 window.renderSessionGraphs = function (session) {
+    lastRenderedSession = session; // save for resize observer
+
+    // 1. Find or create the container
     let container = document.getElementById("sessionDetailGraphArea");
 
     if (!container) {
@@ -13,124 +26,129 @@ window.renderSessionGraphs = function (session) {
         container = document.createElement("div");
         container.id = "sessionDetailGraphArea";
         container.style.marginTop = "20px";
-        container.style.padding = "15px";
         container.style.background = "#fff";
-        container.style.borderRadius = "8px";
-        container.style.border = "1px solid #e0e0e0";
+        container.style.padding = "16px";
+        container.style.borderRadius = "10px";
+        container.style.border = "1px solid #ddd";
         summaryDiv.parentNode.insertBefore(container, summaryDiv.nextSibling);
+
+        observer.observe(container); // observe size changes
     }
 
-    container.innerHTML = "<h4>Session Analysis</h4>";
+    container.innerHTML = "<h4 style='margin-bottom:12px;'>Session Analysis</h4>";
 
-    if (!session.events || session.events.length < 2) {
+    // 2. Validate data
+    if (!session.events || session.events.length < 3) {
         container.innerHTML += "<i>Not enough data points to generate a graph.</i>";
         return;
     }
 
+    // 3. Process Data (correct WPM)
     const labels = [];
     const wordsData = [];
     const wpmData = [];
 
     const startTime = session.events[0].t;
-    let lastChars = session.events[0].c;
+
     let lastTime = startTime;
+    let lastChars = session.events[0].c;
 
-    session.events.forEach((event, i) => {
-        const timeDiffMs = event.t - startTime;
-        if (timeDiffMs < 1000) return;
+    session.events.forEach((event) => {
+        const dt = event.t - lastTime;       // interval time
+        const dc = event.c - lastChars;      // interval chars
 
-        const totalSeconds = Math.floor(timeDiffMs / 1000);
-        const mm = Math.floor(totalSeconds / 60);
-        const ss = totalSeconds % 60;
-        labels.push(`${mm}:${ss.toString().padStart(2, "0")}`);
+        if (dt <= 50) return; // skip micro-events
 
-        // --- Correct cumulative words ---
-        const cumulativeWords = event.c / 5;
-        wordsData.push(cumulativeWords.toFixed(1));
+        const totalSec = Math.floor((event.t - startTime) / 1000);
+        const mm = Math.floor(totalSec / 60);
+        const ss = (totalSec % 60).toString().padStart(2, '0');
 
-        // --- Correct incremental WPM (prevents 2000+ spikes) ---
-        const charsTypedNow = event.c - lastChars;
-        const intervalMinutes = (event.t - lastTime) / 60000;
+        labels.push(`${mm}:${ss}`);
 
-        let wpm = 0;
-        if (charsTypedNow > 0 && intervalMinutes > 0) {
-            wpm = (charsTypedNow / 5) / intervalMinutes;
-        }
+        // Words typed in this interval
+        const intervalWords = dc / 5;
+        const intervalMinutes = dt / 60000;
 
-        lastChars = event.c;
+        // Correct WPM calculation
+        const wpm = intervalMinutes > 0 ? intervalWords / intervalMinutes : 0;
+
+        // Cumulative words
+        const totalWords = (event.c / 5);
+
+        wordsData.push(totalWords.toFixed(1));
+        wpmData.push(Math.max(0, wpm).toFixed(0));
+
         lastTime = event.t;
-
-        wpmData.push(Math.round(wpm));
+        lastChars = event.c;
     });
 
+    // 4. Create canvases
     const canvas1 = document.createElement("canvas");
     canvas1.style.marginBottom = "20px";
+    canvas1.style.height = "240px";   // **taller**
+    canvas1.style.width = "100%";
+    container.appendChild(canvas1);
 
     const canvas2 = document.createElement("canvas");
-
-    container.appendChild(canvas1);
+    canvas2.style.height = "240px";   // **taller**
+    canvas2.style.width = "100%";
     container.appendChild(canvas2);
 
+    // 5. Destroy old charts
     if (activeCharts.progress) activeCharts.progress.destroy();
     if (activeCharts.speed) activeCharts.speed.destroy();
 
-    // Words Over Time
+    // 6. Render cumulative words
     activeCharts.progress = new Chart(canvas1.getContext("2d"), {
         type: 'line',
         data: {
-            labels: labels,
+            labels,
             datasets: [{
-                label: 'Words Typed (Cumulative)',
+                label: "Words Typed (Cumulative)",
                 data: wordsData,
-                borderColor: '#0078d7',
-                backgroundColor: 'rgba(0, 120, 215, 0.1)',
+                borderColor: "#0078d7",
+                backgroundColor: "rgba(0,120,215,0.15)",
                 fill: true,
-                tension: 0.3
+                tension: 0.25
             }]
         },
         options: {
+            maintainAspectRatio: false,   // **important**
             responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                title: { display: true, text: 'Productivity: Words over Time' }
-            },
             scales: {
-                y: { beginAtZero: true }
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: "Words" }
+                }
             }
         }
     });
 
-    // WPM Over Time
+    // 7. Render interval WPM
     activeCharts.speed = new Chart(canvas2.getContext("2d"), {
-        type: 'line',
+        type: "line",
         data: {
-            labels: labels,
+            labels,
             datasets: [{
-                label: 'Typing Speed (WPM)',
+                label: "Typing Speed (WPM)",
                 data: wpmData,
-                borderColor: '#d93025',
-                backgroundColor: 'rgba(217, 48, 37, 0.1)',
+                borderColor: "#d93025",
+                backgroundColor: "rgba(217,48,37,0.15)",
                 fill: true,
-                tension: 0.3
+                tension: 0.25
             }]
         },
         options: {
-            responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                title: { display: true, text: 'Speed: WPM over Session' }
-            },
+            responsive: true,
             scales: {
-                y: { beginAtZero: true }
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: "WPM" }
+                }
             }
         }
     });
 
-    // 🔥 Fix graph squashing in default Word taskpane
-    setTimeout(() => {
-        activeCharts.progress.resize();
-        activeCharts.speed.resize();
-    }, 100);
-
-    container.scrollIntoView({ behavior: 'smooth' });
+    container.scrollIntoView({ behavior: "smooth" });
 };
