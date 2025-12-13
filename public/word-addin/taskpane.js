@@ -1,6 +1,6 @@
 
 // ----------------------------
-// ProofWrite taskpane.js (University Standard Edition)
+// ForensiCode taskpane.js (University Standard Edition)
 // Version: 2025-12-02_v4_UNI  (timestamps + notify + safe-ui fixes + anchor-first export)
 // ----------------------------
 
