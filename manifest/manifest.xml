@@ -83,7 +83,7 @@
 
       <bt:Urls>
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://go.microsoft.com/fwlink/?LinkId=276812"/>
-        <bt:Url id="Commands.Url" DefaultValue="https://forensicode.web.app/word-addin/commands.html"/>
+        <bt:Url id="Commands.Url" DefaultValue="https://forensicode.web.app/commands.html"/>
         <bt:Url id="Taskpane.Url" DefaultValue="https://forensicode.web.app/word-addin/taskpane.html"/>
       </bt:Urls>
 
